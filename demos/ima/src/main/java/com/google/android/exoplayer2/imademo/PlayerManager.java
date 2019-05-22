@@ -17,6 +17,7 @@ package com.google.android.exoplayer2.imademo;
 
 import android.content.Context;
 import android.net.Uri;
+import android.util.Log;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.C.ContentType;
 import com.google.android.exoplayer2.ExoPlayer;
@@ -37,15 +38,47 @@ import com.google.android.exoplayer2.util.Util;
 /** Manages the {@link ExoPlayer}, the IMA plugin and all video playback. */
 /* package */ final class PlayerManager implements AdsMediaSource.MediaSourceFactory {
 
+  // NOTE: change these to get the failing condition
+
+  private boolean GET_PREROLL_ADS = true;
+  private boolean FORCE_START_PAST_FIRST_MID_ROLL = false;
+
+  /*** --------------------------------------------------
+   //  NOTE: sorry please VPN to Malaysia for the ads setup to work
+   //
+   //                   |      FORCE_START_PAST_FIRST_MID_ROLL
+   //                   |       true       |      false
+   // GET_PREROLL_ADS   +------------------+-------------------------
+   //     true          |       OK         |        OK usually
+   //    false          |      FAIL 1       |     FAIL 2 (after playing/seeking past first mid-roll)
+   //
+   //  NOTE: FAIL 1 doesn't even play ads while FAIL 2 only goes into seemingly endless-loop after ad finished.
+   //
+   // ================================================== */
+
   private final ImaAdsLoader adsLoader;
   private final DataSource.Factory dataSourceFactory;
 
   private SimpleExoPlayer player;
-  private long contentPosition;
+
+  private long contentPosition = FORCE_START_PAST_FIRST_MID_ROLL ? 466 * 1000 : 0;
 
   public PlayerManager(Context context) {
-    String adTag = context.getString(R.string.ad_tag_url);
-    adsLoader = new ImaAdsLoader(context, Uri.parse(adTag));
+    String adTag = context.getString( GET_PREROLL_ADS ?
+            R.string.ad_tag_midrolls_w_preroll :
+            R.string.ad_tag_midrolls_no_preroll);
+    adsLoader = new ImaAdsLoader.Builder(context)
+            .setVastLoadTimeoutMs(30 * 1000)
+            .setMediaLoadTimeoutMs(30 * 1000)
+            .setAdEventListener( adEvent -> {
+              Log.d("ImaAdsLoader", String.format("AdEvent[%s]", adEvent.getType()));
+            })
+            .buildForAdTag(Uri.parse(adTag));
+
+    adsLoader.getAdsLoader().addAdErrorListener(adErrorEvent -> {
+      Log.w("ImaAdsLoader", String.format("ADERROR: [%s]", adErrorEvent.getError()));
+    });
+
     dataSourceFactory =
         new DefaultDataSourceFactory(
             context, Util.getUserAgent(context, context.getString(R.string.application_name)));
@@ -68,7 +101,7 @@ import com.google.android.exoplayer2.util.Util;
 
     // Prepare the player with the source.
     player.seekTo(contentPosition);
-    player.prepare(mediaSourceWithAds);
+    player.prepare(mediaSourceWithAds, false, false);
     player.setPlayWhenReady(true);
   }
 
