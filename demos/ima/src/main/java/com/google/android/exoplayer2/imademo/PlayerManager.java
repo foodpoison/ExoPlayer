@@ -40,8 +40,8 @@ import com.google.android.exoplayer2.util.Util;
 
   // NOTE: change these to get the failing condition
 
-  private boolean GET_PREROLL_ADS = true;
-  private boolean FORCE_START_PAST_FIRST_MID_ROLL = false;
+  private boolean GET_PREROLL_ADS = false;
+  private boolean FORCE_START_PAST_FIRST_MID_ROLL = true;
 
   /*** --------------------------------------------------
    //  NOTE: sorry please VPN to Malaysia for the ads setup to work
