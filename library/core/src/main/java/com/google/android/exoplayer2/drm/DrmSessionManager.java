@@ -15,15 +15,55 @@
  */
 package com.google.android.exoplayer2.drm;
 
-import android.annotation.TargetApi;
 import android.os.Looper;
+import androidx.annotation.IntDef;
 import com.google.android.exoplayer2.drm.DrmInitData.SchemeData;
+import java.lang.annotation.Documented;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
 /**
  * Manages a DRM session.
  */
-@TargetApi(16)
 public interface DrmSessionManager<T extends ExoMediaCrypto> {
+
+  /** {@link DrmSessionManager} that supports no DRM schemes. */
+  DrmSessionManager<ExoMediaCrypto> DUMMY =
+      new DrmSessionManager<ExoMediaCrypto>() {
+
+        @Override
+        public boolean canAcquireSession(DrmInitData drmInitData) {
+          return false;
+        }
+
+        @Override
+        public DrmSession<ExoMediaCrypto> acquireSession(
+            Looper playbackLooper, DrmInitData drmInitData) {
+          return new ErrorStateDrmSession<>(
+              new DrmSession.DrmSessionException(
+                  new UnsupportedDrmException(UnsupportedDrmException.REASON_UNSUPPORTED_SCHEME)));
+        }
+      };
+
+  /** Flags that control the handling of DRM protected content. */
+  @Documented
+  @Retention(RetentionPolicy.SOURCE)
+  @IntDef(
+      flag = true,
+      value = {FLAG_PLAY_CLEAR_SAMPLES_WITHOUT_KEYS})
+  @interface Flags {}
+
+  /**
+   * When this flag is set, clear samples of an encrypted region may be rendered when no keys are
+   * available.
+   *
+   * <p>Encrypted media may contain clear (un-encrypted) regions. For example a media file may start
+   * with a short clear region so as to allow playback to begin in parallel with key acquisition.
+   * When this flag is set, consumers of sample data are permitted to access the clear regions of
+   * encrypted media files when the associated {@link DrmSession} has not yet obtained the keys
+   * necessary for the encrypted regions of the media.
+   */
+  int FLAG_PLAY_CLEAR_SAMPLES_WITHOUT_KEYS = 1;
 
   /**
    * Returns whether the manager is capable of acquiring a session for the given
@@ -36,8 +76,10 @@ public interface DrmSessionManager<T extends ExoMediaCrypto> {
   boolean canAcquireSession(DrmInitData drmInitData);
 
   /**
-   * Acquires a {@link DrmSession} for the specified {@link DrmInitData}. The {@link DrmSession}
-   * must be returned to {@link #releaseSession(DrmSession)} when it is no longer required.
+   * Returns a {@link DrmSession} with an acquired reference for the specified {@link DrmInitData}.
+   *
+   * <p>The caller must call {@link DrmSession#releaseReference} to decrement the session's
+   * reference count when the session is no longer required.
    *
    * @param playbackLooper The looper associated with the media playback thread.
    * @param drmInitData DRM initialization data. All contained {@link SchemeData}s must contain
@@ -46,9 +88,9 @@ public interface DrmSessionManager<T extends ExoMediaCrypto> {
    */
   DrmSession<T> acquireSession(Looper playbackLooper, DrmInitData drmInitData);
 
-  /**
-   * Releases a {@link DrmSession}.
-   */
-  void releaseSession(DrmSession<T> drmSession);
-
+  /** Returns flags that control the handling of DRM protected content. */
+  @Flags
+  default int getFlags() {
+    return 0;
+  }
 }

@@ -16,8 +16,7 @@
 package com.google.android.exoplayer2.testutil;
 
 import android.os.Handler;
-import android.support.annotation.Nullable;
-import android.util.Log;
+import androidx.annotation.Nullable;
 import android.view.Surface;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
@@ -33,7 +32,10 @@ import com.google.android.exoplayer2.testutil.ActionSchedule.ActionNode;
 import com.google.android.exoplayer2.testutil.ActionSchedule.PlayerRunnable;
 import com.google.android.exoplayer2.testutil.ActionSchedule.PlayerTarget;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
+import com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters;
+import com.google.android.exoplayer2.util.ConditionVariable;
 import com.google.android.exoplayer2.util.HandlerWrapper;
+import com.google.android.exoplayer2.util.Log;
 
 /**
  * Base class for actions to perform during playback tests.
@@ -41,7 +43,7 @@ import com.google.android.exoplayer2.util.HandlerWrapper;
 public abstract class Action {
 
   private final String tag;
-  private final @Nullable String description;
+  @Nullable private final String description;
 
   /**
    * @param tag A tag to use for logging.
@@ -219,7 +221,10 @@ public abstract class Action {
 
   }
 
-  /** Calls {@link DefaultTrackSelector#setRendererDisabled(int, boolean)}. */
+  /**
+   * Updates the {@link Parameters} of a {@link DefaultTrackSelector} to specify whether the
+   * renderer at a given index should be disabled.
+   */
   public static final class SetRendererDisabled extends Action {
 
     private final int rendererIndex;
@@ -239,7 +244,8 @@ public abstract class Action {
     @Override
     protected void doActionImpl(
         SimpleExoPlayer player, DefaultTrackSelector trackSelector, Surface surface) {
-      trackSelector.setRendererDisabled(rendererIndex, disabled);
+      trackSelector.setParameters(
+          trackSelector.buildUponParameters().setRendererDisabled(rendererIndex, disabled));
     }
 
   }
@@ -464,12 +470,8 @@ public abstract class Action {
         SimpleExoPlayer player, DefaultTrackSelector trackSelector, Surface surface) {
       player
           .createMessage(
-              new Target() {
-                @Override
-                public void handleMessage(int messageType, Object payload)
-                    throws ExoPlaybackException {
-                  throw exception;
-                }
+              (messageType, payload) -> {
+                throw exception;
               })
           .send();
     }
@@ -502,14 +504,22 @@ public abstract class Action {
         final Surface surface,
         final HandlerWrapper handler,
         final ActionNode nextAction) {
-      // Schedule one message on the playback thread to pause the player immediately.
+      Handler testThreadHandler = new Handler();
+      // Schedule a message on the playback thread to ensure the player is paused immediately.
       player
           .createMessage(
-              new Target() {
-                @Override
-                public void handleMessage(int messageType, Object payload)
-                    throws ExoPlaybackException {
-                  player.setPlayWhenReady(/* playWhenReady= */ false);
+              (messageType, payload) -> {
+                // Block playback thread until pause command has been sent from test thread.
+                ConditionVariable blockPlaybackThreadCondition = new ConditionVariable();
+                testThreadHandler.post(
+                    () -> {
+                      player.setPlayWhenReady(/* playWhenReady= */ false);
+                      blockPlaybackThreadCondition.open();
+                    });
+                try {
+                  blockPlaybackThreadCondition.block();
+                } catch (InterruptedException e) {
+                  // Ignore.
                 }
               })
           .setPosition(windowIndex, positionMs)
@@ -517,15 +527,10 @@ public abstract class Action {
       // Schedule another message on this test thread to continue action schedule.
       player
           .createMessage(
-              new Target() {
-                @Override
-                public void handleMessage(int messageType, Object payload)
-                    throws ExoPlaybackException {
-                  nextAction.schedule(player, trackSelector, surface, handler);
-                }
-              })
+              (messageType, payload) ->
+                  nextAction.schedule(player, trackSelector, surface, handler))
           .setPosition(windowIndex, positionMs)
-          .setHandler(new Handler())
+          .setHandler(testThreadHandler)
           .send();
       player.setPlayWhenReady(true);
     }
@@ -542,7 +547,7 @@ public abstract class Action {
    */
   public static final class WaitForTimelineChanged extends Action {
 
-    private final @Nullable Timeline expectedTimeline;
+    @Nullable private final Timeline expectedTimeline;
 
     /**
      * Creates action waiting for a timeline change.
@@ -567,10 +572,12 @@ public abstract class Action {
         return;
       }
       Player.EventListener listener =
-          new Player.DefaultEventListener() {
+          new Player.EventListener() {
             @Override
             public void onTimelineChanged(
-                Timeline timeline, Object manifest, @Player.TimelineChangeReason int reason) {
+                Timeline timeline,
+                @Nullable Object manifest,
+                @Player.TimelineChangeReason int reason) {
               if (expectedTimeline == null || timeline.equals(expectedTimeline)) {
                 player.removeListener(this);
                 nextAction.schedule(player, trackSelector, surface, handler);
@@ -613,13 +620,14 @@ public abstract class Action {
       if (nextAction == null) {
         return;
       }
-      player.addListener(new Player.DefaultEventListener() {
-        @Override
-        public void onPositionDiscontinuity(@Player.DiscontinuityReason int reason) {
-          player.removeListener(this);
-          nextAction.schedule(player, trackSelector, surface, handler);
-        }
-      });
+      player.addListener(
+          new Player.EventListener() {
+            @Override
+            public void onPositionDiscontinuity(@Player.DiscontinuityReason int reason) {
+              player.removeListener(this);
+              nextAction.schedule(player, trackSelector, surface, handler);
+            }
+          });
     }
 
     @Override
@@ -658,15 +666,67 @@ public abstract class Action {
       if (targetPlaybackState == player.getPlaybackState()) {
         nextAction.schedule(player, trackSelector, surface, handler);
       } else {
-        player.addListener(new Player.DefaultEventListener() {
-          @Override
-          public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-            if (targetPlaybackState == playbackState) {
-              player.removeListener(this);
-              nextAction.schedule(player, trackSelector, surface, handler);
-            }
-          }
-        });
+        player.addListener(
+            new Player.EventListener() {
+              @Override
+              public void onPlayerStateChanged(
+                  boolean playWhenReady, @Player.State int playbackState) {
+                if (targetPlaybackState == playbackState) {
+                  player.removeListener(this);
+                  nextAction.schedule(player, trackSelector, surface, handler);
+                }
+              }
+            });
+      }
+    }
+
+    @Override
+    protected void doActionImpl(
+        SimpleExoPlayer player, DefaultTrackSelector trackSelector, Surface surface) {
+      // Not triggered.
+    }
+  }
+
+  /**
+   * Waits for a specified loading state, returning either immediately or after a call to {@link
+   * Player.EventListener#onLoadingChanged(boolean)}.
+   */
+  public static final class WaitForIsLoading extends Action {
+
+    private final boolean targetIsLoading;
+
+    /**
+     * @param tag A tag to use for logging.
+     * @param targetIsLoading The loading state to wait for.
+     */
+    public WaitForIsLoading(String tag, boolean targetIsLoading) {
+      super(tag, "WaitForIsLoading");
+      this.targetIsLoading = targetIsLoading;
+    }
+
+    @Override
+    protected void doActionAndScheduleNextImpl(
+        final SimpleExoPlayer player,
+        final DefaultTrackSelector trackSelector,
+        final Surface surface,
+        final HandlerWrapper handler,
+        final ActionNode nextAction) {
+      if (nextAction == null) {
+        return;
+      }
+      if (targetIsLoading == player.isLoading()) {
+        nextAction.schedule(player, trackSelector, surface, handler);
+      } else {
+        player.addListener(
+            new Player.EventListener() {
+              @Override
+              public void onLoadingChanged(boolean isLoading) {
+                if (targetIsLoading == isLoading) {
+                  player.removeListener(this);
+                  nextAction.schedule(player, trackSelector, surface, handler);
+                }
+              }
+            });
       }
     }
 
@@ -699,13 +759,14 @@ public abstract class Action {
       if (nextAction == null) {
         return;
       }
-      player.addListener(new Player.DefaultEventListener() {
-        @Override
-        public void onSeekProcessed() {
-          player.removeListener(this);
-          nextAction.schedule(player, trackSelector, surface, handler);
-        }
-      });
+      player.addListener(
+          new Player.EventListener() {
+            @Override
+            public void onSeekProcessed() {
+              player.removeListener(this);
+              nextAction.schedule(player, trackSelector, surface, handler);
+            }
+          });
     }
 
     @Override

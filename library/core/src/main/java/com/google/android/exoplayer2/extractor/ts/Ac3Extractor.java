@@ -15,6 +15,8 @@
  */
 package com.google.android.exoplayer2.extractor.ts;
 
+import static com.google.android.exoplayer2.extractor.ts.TsPayloadReader.FLAG_DATA_ALIGNMENT_INDICATOR;
+
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.audio.Ac3Util;
 import com.google.android.exoplayer2.extractor.Extractor;
@@ -25,7 +27,6 @@ import com.google.android.exoplayer2.extractor.PositionHolder;
 import com.google.android.exoplayer2.extractor.SeekMap;
 import com.google.android.exoplayer2.extractor.ts.TsPayloadReader.TrackIdGenerator;
 import com.google.android.exoplayer2.util.ParsableByteArray;
-import com.google.android.exoplayer2.util.Util;
 import java.io.IOException;
 
 /**
@@ -33,17 +34,8 @@ import java.io.IOException;
  */
 public final class Ac3Extractor implements Extractor {
 
-  /**
-   * Factory for {@link Ac3Extractor} instances.
-   */
-  public static final ExtractorsFactory FACTORY = new ExtractorsFactory() {
-
-    @Override
-    public Extractor[] createExtractors() {
-      return new Extractor[] {new Ac3Extractor()};
-    }
-
-  };
+  /** Factory for {@link Ac3Extractor} instances. */
+  public static final ExtractorsFactory FACTORY = () -> new Extractor[] {new Ac3Extractor()};
 
   /**
    * The maximum number of bytes to search when sniffing, excluding ID3 information, before giving
@@ -52,7 +44,7 @@ public final class Ac3Extractor implements Extractor {
   private static final int MAX_SNIFF_BYTES = 8 * 1024;
   private static final int AC3_SYNC_WORD = 0x0B77;
   private static final int MAX_SYNC_FRAME_SIZE = 2786;
-  private static final int ID3_TAG = Util.getIntegerCodeForString("ID3");
+  private static final int ID3_TAG = 0x00494433;
 
   private final long firstSampleTimestampUs;
   private final Ac3Reader reader;
@@ -83,7 +75,7 @@ public final class Ac3Extractor implements Extractor {
       if (scratch.readUnsignedInt24() != ID3_TAG) {
         break;
       }
-      scratch.skipBytes(3);
+      scratch.skipBytes(3); // version, flags
       int length = scratch.readSynchSafeInt();
       startPosition += 10 + length;
       input.advancePeekPosition(length);
@@ -94,7 +86,7 @@ public final class Ac3Extractor implements Extractor {
     int headerPosition = startPosition;
     int validFramesCount = 0;
     while (true) {
-      input.peekFully(scratch.data, 0, 5);
+      input.peekFully(scratch.data, 0, 6);
       scratch.setPosition(0);
       int syncBytes = scratch.readUnsignedShort();
       if (syncBytes != AC3_SYNC_WORD) {
@@ -112,7 +104,7 @@ public final class Ac3Extractor implements Extractor {
         if (frameSize == C.LENGTH_UNSET) {
           return false;
         }
-        input.advancePeekPosition(frameSize - 5);
+        input.advancePeekPosition(frameSize - 6);
       }
     }
   }
@@ -149,7 +141,7 @@ public final class Ac3Extractor implements Extractor {
 
     if (!startedPacket) {
       // Pass data to the reader as though it's contained within a single infinitely long packet.
-      reader.packetStarted(firstSampleTimestampUs, true);
+      reader.packetStarted(firstSampleTimestampUs, FLAG_DATA_ALIGNMENT_INDICATOR);
       startedPacket = true;
     }
     // TODO: Make it possible for the reader to consume the dataSource directly, so that it becomes

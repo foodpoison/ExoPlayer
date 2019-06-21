@@ -15,8 +15,8 @@
  */
 package com.google.android.exoplayer2.extractor.ogg;
 
-import android.util.Log;
 import com.google.android.exoplayer2.ParserException;
+import com.google.android.exoplayer2.util.Log;
 import com.google.android.exoplayer2.util.ParsableByteArray;
 import java.util.Arrays;
 
@@ -218,40 +218,38 @@ import java.util.Arrays;
     int mappingsCount = bitArray.readBits(6) + 1;
     for (int i = 0; i < mappingsCount; i++) {
       int mappingType = bitArray.readBits(16);
-      switch (mappingType) {
-        case 0:
-          int submaps;
-          if (bitArray.readBit()) {
-            submaps = bitArray.readBits(4) + 1;
-          } else {
-            submaps = 1;
-          }
-          int couplingSteps;
-          if (bitArray.readBit()) {
-            couplingSteps = bitArray.readBits(8) + 1;
-            for (int j = 0; j < couplingSteps; j++) {
-              bitArray.skipBits(iLog(channels - 1)); // magnitude
-              bitArray.skipBits(iLog(channels - 1)); // angle
-            }
-          } /*else {
-            couplingSteps = 0;
-          }*/
-          if (bitArray.readBits(2) != 0x00) {
-            throw new ParserException("to reserved bits must be zero after mapping coupling steps");
-          }
-          if (submaps > 1) {
-            for (int j = 0; j < channels; j++) {
-              bitArray.skipBits(4); // mappingMux
-            }
-          }
-          for (int j = 0; j < submaps; j++) {
-            bitArray.skipBits(8); // discard
-            bitArray.skipBits(8); // submapFloor
-            bitArray.skipBits(8); // submapResidue
-          }
-          break;
-        default:
-          Log.e(TAG, "mapping type other than 0 not supported: " + mappingType);
+      if (mappingType != 0) {
+        Log.e(TAG, "mapping type other than 0 not supported: " + mappingType);
+        continue;
+      }
+      int submaps;
+      if (bitArray.readBit()) {
+        submaps = bitArray.readBits(4) + 1;
+      } else {
+        submaps = 1;
+      }
+      int couplingSteps;
+      if (bitArray.readBit()) {
+        couplingSteps = bitArray.readBits(8) + 1;
+        for (int j = 0; j < couplingSteps; j++) {
+          bitArray.skipBits(iLog(channels - 1)); // magnitude
+          bitArray.skipBits(iLog(channels - 1)); // angle
+        }
+      } /*else {
+          couplingSteps = 0;
+        }*/
+      if (bitArray.readBits(2) != 0x00) {
+        throw new ParserException("to reserved bits must be zero after mapping coupling steps");
+      }
+      if (submaps > 1) {
+        for (int j = 0; j < channels; j++) {
+          bitArray.skipBits(4); // mappingMux
+        }
+      }
+      for (int j = 0; j < submaps; j++) {
+        bitArray.skipBits(8); // discard
+        bitArray.skipBits(8); // submapFloor
+        bitArray.skipBits(8); // submapResidue
       }
     }
   }
@@ -357,12 +355,12 @@ import java.util.Arrays;
       for (int i = 0; i < lengthMap.length; i++) {
         if (isSparse) {
           if (bitArray.readBit()) {
-            lengthMap[i] = bitArray.readBits(5) + 1;
+            lengthMap[i] = (long) (bitArray.readBits(5) + 1);
           } else { // entry unused
             lengthMap[i] = 0;
           }
         } else { // not sparse
-          lengthMap[i] = bitArray.readBits(5) + 1;
+          lengthMap[i] = (long) (bitArray.readBits(5) + 1);
         }
       }
     } else {
@@ -392,7 +390,7 @@ import java.util.Arrays;
           lookupValuesCount = 0;
         }
       } else {
-        lookupValuesCount = entries * dimensions;
+        lookupValuesCount = (long) entries * dimensions;
       }
       // discard (no decoding required yet)
       bitArray.skipBits((int) (lookupValuesCount * valueBits));
@@ -405,6 +403,10 @@ import java.util.Arrays;
    */
   private static long mapType1QuantValues(long entries, long dimension) {
     return (long) Math.floor(Math.pow(entries, 1.d / dimension));
+  }
+
+  private VorbisUtil() {
+    // Prevent instantiation.
   }
 
   public static final class CodeBook {

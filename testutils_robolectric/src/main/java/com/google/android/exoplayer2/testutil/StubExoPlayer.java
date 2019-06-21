@@ -16,7 +16,8 @@
 package com.google.android.exoplayer2.testutil;
 
 import android.os.Looper;
-import android.support.annotation.Nullable;
+import com.google.android.exoplayer2.BasePlayer;
+import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
@@ -31,7 +32,12 @@ import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
  * An abstract {@link ExoPlayer} implementation that throws {@link UnsupportedOperationException}
  * from every method.
  */
-public abstract class StubExoPlayer implements ExoPlayer {
+public abstract class StubExoPlayer extends BasePlayer implements ExoPlayer {
+
+  @Override
+  public AudioComponent getAudioComponent() {
+    throw new UnsupportedOperationException();
+  }
 
   @Override
   public VideoComponent getVideoComponent() {
@@ -44,7 +50,17 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
+  public MetadataComponent getMetadataComponent() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public Looper getPlaybackLooper() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Looper getApplicationLooper() {
     throw new UnsupportedOperationException();
   }
 
@@ -59,7 +75,18 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
+  @Player.State
   public int getPlaybackState() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ExoPlaybackException getPlaybackError() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void retry() {
     throw new UnsupportedOperationException();
   }
 
@@ -109,21 +136,6 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
-  public void seekToDefaultPosition() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void seekToDefaultPosition(int windowIndex) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void seekTo(long positionMs) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public void seekTo(int windowIndex, long positionMs) {
     throw new UnsupportedOperationException();
   }
@@ -144,12 +156,7 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
-  public @Nullable Object getCurrentTag() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void stop() {
+  public SeekParameters getSeekParameters() {
     throw new UnsupportedOperationException();
   }
 
@@ -169,11 +176,15 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
+  @Deprecated
+  @SuppressWarnings("deprecation")
   public void sendMessages(ExoPlayerMessage... messages) {
     throw new UnsupportedOperationException();
   }
 
   @Override
+  @Deprecated
+  @SuppressWarnings("deprecation")
   public void blockingSendMessages(ExoPlayerMessage... messages) {
     throw new UnsupportedOperationException();
   }
@@ -219,16 +230,6 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
-  public int getNextWindowIndex() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int getPreviousWindowIndex() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public long getDuration() {
     throw new UnsupportedOperationException();
   }
@@ -244,17 +245,7 @@ public abstract class StubExoPlayer implements ExoPlayer {
   }
 
   @Override
-  public int getBufferedPercentage() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public boolean isCurrentWindowDynamic() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public boolean isCurrentWindowSeekable() {
+  public long getTotalBufferedDuration() {
     throw new UnsupportedOperationException();
   }
 
@@ -275,6 +266,16 @@ public abstract class StubExoPlayer implements ExoPlayer {
 
   @Override
   public long getContentPosition() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getContentBufferedPosition() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setForegroundMode(boolean foregroundMode) {
     throw new UnsupportedOperationException();
   }
 }

@@ -15,48 +15,59 @@
  */
 package com.google.android.exoplayer2.upstream;
 
+import static com.google.android.exoplayer2.util.Util.castNonNull;
+
 import android.net.Uri;
+import androidx.annotation.Nullable;
 import android.util.Base64;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ParserException;
+import com.google.android.exoplayer2.util.Util;
 import java.io.IOException;
 import java.net.URLDecoder;
 
-/**
- * A {@link DataSource} for reading data URLs, as defined by RFC 2397.
- */
-public final class DataSchemeDataSource implements DataSource {
+/** A {@link DataSource} for reading data URLs, as defined by RFC 2397. */
+public final class DataSchemeDataSource extends BaseDataSource {
 
   public static final String SCHEME_DATA = "data";
 
-  private DataSpec dataSpec;
+  @Nullable private DataSpec dataSpec;
+  @Nullable private byte[] data;
+  private int dataLength;
   private int bytesRead;
-  private byte[] data;
+
+  public DataSchemeDataSource() {
+    super(/* isNetwork= */ false);
+  }
 
   @Override
   public long open(DataSpec dataSpec) throws IOException {
+    transferInitializing(dataSpec);
     this.dataSpec = dataSpec;
     Uri uri = dataSpec.uri;
     String scheme = uri.getScheme();
     if (!SCHEME_DATA.equals(scheme)) {
       throw new ParserException("Unsupported scheme: " + scheme);
     }
-    String[] uriParts = uri.getSchemeSpecificPart().split(",");
-    if (uriParts.length > 2) {
+    String[] uriParts = Util.split(uri.getSchemeSpecificPart(), ",");
+    if (uriParts.length != 2) {
       throw new ParserException("Unexpected URI format: " + uri);
     }
     String dataString = uriParts[1];
     if (uriParts[0].contains(";base64")) {
       try {
         data = Base64.decode(dataString, 0);
+        dataLength = data.length;
       } catch (IllegalArgumentException e) {
         throw new ParserException("Error while parsing Base64 encoded string: " + dataString, e);
       }
     } else {
       // TODO: Add support for other charsets.
-      data = URLDecoder.decode(dataString, C.ASCII_NAME).getBytes();
+      data = Util.getUtf8Bytes(URLDecoder.decode(dataString, C.ASCII_NAME));
+      dataLength = data.length;
     }
-    return data.length;
+    transferStarted(dataSpec);
+    return dataLength;
   }
 
   @Override
@@ -64,25 +75,30 @@ public final class DataSchemeDataSource implements DataSource {
     if (readLength == 0) {
       return 0;
     }
-    int remainingBytes = data.length - bytesRead;
+    int remainingBytes = dataLength - bytesRead;
     if (remainingBytes == 0) {
       return C.RESULT_END_OF_INPUT;
     }
     readLength = Math.min(readLength, remainingBytes);
-    System.arraycopy(data, bytesRead, buffer, offset, readLength);
+    System.arraycopy(castNonNull(data), bytesRead, buffer, offset, readLength);
     bytesRead += readLength;
+    bytesTransferred(readLength);
     return readLength;
   }
 
   @Override
+  @Nullable
   public Uri getUri() {
     return dataSpec != null ? dataSpec.uri : null;
   }
 
   @Override
   public void close() throws IOException {
+    if (data != null) {
+      data = null;
+      transferEnded();
+    }
     dataSpec = null;
-    data = null;
   }
 
 }

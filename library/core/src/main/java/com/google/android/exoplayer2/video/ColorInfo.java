@@ -17,10 +17,10 @@ package com.google.android.exoplayer2.video;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.util.Util;
-
 import java.util.Arrays;
 
 /**
@@ -50,10 +50,8 @@ public final class ColorInfo implements Parcelable {
   @C.ColorTransfer
   public final int colorTransfer;
 
-  /**
-   * HdrStaticInfo as defined in CTA-861.3.
-   */
-  public final byte[] hdrStaticInfo;
+  /** HdrStaticInfo as defined in CTA-861.3, or null if none specified. */
+  @Nullable public final byte[] hdrStaticInfo;
 
   // Lazily initialized hashcode.
   private int hashCode;
@@ -64,10 +62,13 @@ public final class ColorInfo implements Parcelable {
    * @param colorSpace The color space of the video.
    * @param colorRange The color range of the video.
    * @param colorTransfer The color transfer characteristics of the video.
-   * @param hdrStaticInfo HdrStaticInfo as defined in CTA-861.3.
+   * @param hdrStaticInfo HdrStaticInfo as defined in CTA-861.3, or null if none specified.
    */
-  public ColorInfo(@C.ColorSpace int colorSpace, @C.ColorRange int colorRange,
-      @C.ColorTransfer int colorTransfer, byte[] hdrStaticInfo) {
+  public ColorInfo(
+      @C.ColorSpace int colorSpace,
+      @C.ColorRange int colorRange,
+      @C.ColorTransfer int colorTransfer,
+      @Nullable byte[] hdrStaticInfo) {
     this.colorSpace = colorSpace;
     this.colorRange = colorRange;
     this.colorTransfer = colorTransfer;
@@ -85,7 +86,7 @@ public final class ColorInfo implements Parcelable {
 
   // Parcelable implementation.
   @Override
-  public boolean equals(Object obj) {
+  public boolean equals(@Nullable Object obj) {
     if (this == obj) {
       return true;
     }
@@ -134,16 +135,16 @@ public final class ColorInfo implements Parcelable {
     }
   }
 
-  public static final Parcelable.Creator<ColorInfo> CREATOR = new Parcelable.Creator<ColorInfo>() {
-    @Override
-    public ColorInfo createFromParcel(Parcel in) {
-      return new ColorInfo(in);
-    }
+  public static final Parcelable.Creator<ColorInfo> CREATOR =
+      new Parcelable.Creator<ColorInfo>() {
+        @Override
+        public ColorInfo createFromParcel(Parcel in) {
+          return new ColorInfo(in);
+        }
 
-    @Override
-    public ColorInfo[] newArray(int size) {
-      return new ColorInfo[0];
-    }
-  };
-
+        @Override
+        public ColorInfo[] newArray(int size) {
+          return new ColorInfo[size];
+        }
+      };
 }

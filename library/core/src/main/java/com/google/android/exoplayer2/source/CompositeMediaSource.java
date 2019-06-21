@@ -16,11 +16,10 @@
 package com.google.android.exoplayer2.source;
 
 import android.os.Handler;
-import android.support.annotation.CallSuper;
-import android.support.annotation.Nullable;
-import com.google.android.exoplayer2.ExoPlayer;
+import androidx.annotation.CallSuper;
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.MediaSourceEventListener.MediaLoadData;
+import com.google.android.exoplayer2.upstream.TransferListener;
 import com.google.android.exoplayer2.util.Assertions;
 import com.google.android.exoplayer2.util.Util;
 import java.io.IOException;
@@ -35,8 +34,8 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
 
   private final HashMap<T, MediaSourceAndListener> childSources;
 
-  private ExoPlayer player;
-  private Handler eventHandler;
+  @Nullable private Handler eventHandler;
+  @Nullable private TransferListener mediaTransferListener;
 
   /** Create composite media source without child sources. */
   protected CompositeMediaSource() {
@@ -45,8 +44,8 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
 
   @Override
   @CallSuper
-  public void prepareSourceInternal(ExoPlayer player, boolean isTopLevelSource) {
-    this.player = player;
+  public void prepareSourceInternal(@Nullable TransferListener mediaTransferListener) {
+    this.mediaTransferListener = mediaTransferListener;
     eventHandler = new Handler();
   }
 
@@ -66,7 +65,6 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
       childSource.mediaSource.removeEventListener(childSource.eventListener);
     }
     childSources.clear();
-    player = null;
   }
 
   /**
@@ -78,7 +76,7 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
    * @param manifest The manifest of the child source.
    */
   protected abstract void onChildSourceInfoRefreshed(
-      @Nullable T id, MediaSource mediaSource, Timeline timeline, @Nullable Object manifest);
+      T id, MediaSource mediaSource, Timeline timeline, @Nullable Object manifest);
 
   /**
    * Prepares a child source.
@@ -93,20 +91,14 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
    * @param id A unique id to identify the child source preparation. Null is allowed as an id.
    * @param mediaSource The child {@link MediaSource}.
    */
-  protected final void prepareChildSource(@Nullable final T id, MediaSource mediaSource) {
+  protected final void prepareChildSource(final T id, MediaSource mediaSource) {
     Assertions.checkArgument(!childSources.containsKey(id));
     SourceInfoRefreshListener sourceListener =
-        new SourceInfoRefreshListener() {
-          @Override
-          public void onSourceInfoRefreshed(
-              MediaSource source, Timeline timeline, @Nullable Object manifest) {
-            onChildSourceInfoRefreshed(id, source, timeline, manifest);
-          }
-        };
+        (source, timeline, manifest) -> onChildSourceInfoRefreshed(id, source, timeline, manifest);
     MediaSourceEventListener eventListener = new ForwardingEventListener(id);
     childSources.put(id, new MediaSourceAndListener(mediaSource, sourceListener, eventListener));
-    mediaSource.addEventListener(eventHandler, eventListener);
-    mediaSource.prepareSource(player, /* isTopLevelSource= */ false, sourceListener);
+    mediaSource.addEventListener(Assertions.checkNotNull(eventHandler), eventListener);
+    mediaSource.prepareSource(sourceListener, mediaTransferListener);
   }
 
   /**
@@ -114,8 +106,8 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
    *
    * @param id The unique id used to prepare the child source.
    */
-  protected final void releaseChildSource(@Nullable T id) {
-    MediaSourceAndListener removedChild = childSources.remove(id);
+  protected final void releaseChildSource(T id) {
+    MediaSourceAndListener removedChild = Assertions.checkNotNull(childSources.remove(id));
     removedChild.mediaSource.releaseSource(removedChild.listener);
     removedChild.mediaSource.removeEventListener(removedChild.eventListener);
   }
@@ -128,7 +120,7 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
    * @param windowIndex A window index of the child source.
    * @return The corresponding window index in the composite source.
    */
-  protected int getWindowIndexForChildWindowIndex(@Nullable T id, int windowIndex) {
+  protected int getWindowIndexForChildWindowIndex(T id, int windowIndex) {
     return windowIndex;
   }
 
@@ -143,7 +135,7 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
    *     corresponding media period id can be determined.
    */
   protected @Nullable MediaPeriodId getMediaPeriodIdForChildMediaPeriodId(
-      @Nullable T id, MediaPeriodId mediaPeriodId) {
+      T id, MediaPeriodId mediaPeriodId) {
     return mediaPeriodId;
   }
 
@@ -177,10 +169,10 @@ public abstract class CompositeMediaSource<T> extends BaseMediaSource {
 
   private final class ForwardingEventListener implements MediaSourceEventListener {
 
-    private final @Nullable T id;
+    private final T id;
     private EventDispatcher eventDispatcher;
 
-    public ForwardingEventListener(@Nullable T id) {
+    public ForwardingEventListener(T id) {
       this.eventDispatcher = createEventDispatcher(/* mediaPeriodId= */ null);
       this.id = id;
     }
